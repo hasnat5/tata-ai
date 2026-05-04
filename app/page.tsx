@@ -9,6 +9,7 @@ import { RotateCcw, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
+import Link from "next/link";
 
 export default function Page() {
   const { project, initProject, resetProject, _hasHydrated } = useAppStore();
@@ -61,6 +62,11 @@ export default function Page() {
           priority
         />
         <div className="flex items-center gap-2">
+          <Link href="/test-ig">
+            <Button variant="secondary" size="sm" className="bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white border-0 hover:opacity-90">
+              Test IG Upload
+            </Button>
+          </Link>
           <Button variant="outline" size="sm" onClick={handleNewProject}>
             <RotateCcw className="mr-2 h-4 w-4" />
             New Project
