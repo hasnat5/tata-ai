@@ -886,7 +886,7 @@ export function ChatInterface() {
           <div className="flex h-full flex-col items-center justify-center p-8 text-center">
             <div className="mb-4">
               <Image
-                src="/images/favicon_og.ico"
+                src="/images/tataAI_logo.png"
                 alt="TataAI"
                 width={64}
                 height={64}

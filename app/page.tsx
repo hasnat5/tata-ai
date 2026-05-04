@@ -33,7 +33,7 @@ export default function Page() {
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Image
-            src="/images/favicon_og.ico"
+            src="/images/tataAI_logo.png"
             alt="TataAI"
             width={48}
             height={48}
@@ -53,11 +53,11 @@ export default function Page() {
       {/* Header */}
       <header className="flex h-14 items-center justify-between border-b border-border px-4">
         <Image
-          src="/images/favicon_og.ico"
+          src="/images/tataAI_logoText.png"
           alt="TataAI"
           width={140}
           height={32}
-          className="h-8 w-auto"
+          className="h-12 w-auto"
           priority
         />
         <div className="flex items-center gap-2">

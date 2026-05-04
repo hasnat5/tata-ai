@@ -617,7 +617,7 @@ export function ChatMessageComponent({ message }: ChatMessageProps) {
       ) : (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
-          src="/images/favicon_og.ico"
+          src="/images/tataAI_logo.png"
           alt="TataAI Director"
           className="h-8 w-8 shrink-0 rounded-full"
         />

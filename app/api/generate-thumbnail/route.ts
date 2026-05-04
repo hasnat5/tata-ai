@@ -217,7 +217,7 @@ Generate the thumbnail image.`;
 
     // Call Nano Banana Pro
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-image-preview",
+      model: "gemini-3.1-flash-image-preview",
       contents: [{ role: "user", parts: contentParts }],
       config: {
         responseModalities: ["IMAGE"],

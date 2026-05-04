@@ -440,7 +440,7 @@ export default function PlanningPage() {
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Image
-            src="/images/favicon_og.ico"
+            src="/images/tataAI_logo.png"
             alt="TataAI"
             width={48}
             height={48}
@@ -469,7 +469,7 @@ export default function PlanningPage() {
           <Separator orientation="vertical" className="h-6" />
           <div className="flex items-center gap-2">
             <Image
-              src="/images/favicon_og.ico"
+              src="/images/tataAI_logo.png"
               alt="TataAI"
               width={28}
               height={28}

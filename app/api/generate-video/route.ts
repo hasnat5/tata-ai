@@ -12,9 +12,8 @@ import * as os from "os";
 
 const ai = new GoogleGenAI({
   vertexai: true,
-  apiKey: process.env.GEMINI_API_KEY,
-  // project: process.env.GOOGLE_CLOUD_PROJECT_ID,
-  // location: process.env.GOOGLE_CLOUD_LOCATION,
+  project: process.env.GOOGLE_CLOUD_PROJECT_ID,
+  location: process.env.GOOGLE_CLOUD_LOCATION,
 });
 const utapi = new UTApi();
 
@@ -175,12 +174,13 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const isPortrait = aspectRatio === "9:16";
+    const sceneTag = `[Scene ${sceneIndex + 1}]`;
 
-    console.log(`=== GENERATING VIDEO FOR SCENE ${sceneIndex + 1} ===`);
+    console.log(`${sceneTag} === GENERATING VIDEO ===`);
     console.log(
-      `Aspect ratio: ${aspectRatio} (${isPortrait ? "portrait" : "landscape"})`,
+      `${sceneTag} Aspect ratio: ${aspectRatio} (${isPortrait ? "portrait" : "landscape"})`,
     );
-    console.log(`Characters in scene: ${charactersInScene.length}`);
+    console.log(`${sceneTag} Characters in scene: ${charactersInScene.length}`);
 
     // Build the prompt
     const prompt = buildVideoPrompt(
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       charactersInScene,
     );
 
-    console.log(`Prompt length: ${prompt.length} characters`);
+    console.log(`${sceneTag} Prompt length: ${prompt.length} characters`);
 
     // Fetch thumbnail as buffer
     const thumbnailBuffer = await fetchImageAsBuffer(thumbnailUrl);
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
     if (isPortrait) {
       // PORTRAIT MODE: Use image-to-video (no reference images allowed per docs)
       // Reference images only support 16:9 aspect ratio
-      console.log("Using image-to-video mode (portrait)");
+      console.log(`${sceneTag} Using image-to-video mode (portrait)`);
 
       operation = await ai.models.generateVideos({
         model: "veo-3.1-fast-generate-001",
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
     } else {
       // LANDSCAPE MODE: Use reference images (up to 3)
       // Per docs: referenceImages only supports 16:9 and requires 8s duration
-      console.log("Using reference images mode (landscape)");
+      console.log(`${sceneTag} Using reference images mode (landscape)`);
 
       // Prepare reference images - match the API structure from docs
       const referenceImages: VideoGenerationReferenceImage[] = [];
@@ -241,7 +241,9 @@ export async function POST(request: NextRequest) {
         const char = charactersInScene[i];
         if (char.attireAngles && char.attireAngles.length >= 4) {
           try {
-            console.log(`Creating character grid for ${char.name}...`);
+            console.log(
+              `${sceneTag} Creating character grid for ${char.name}...`,
+            );
             const gridBuffer = await createCharacterGrid(char.attireAngles);
             const gridBase64 = gridBuffer.toString("base64");
             referenceImages.push({
@@ -251,14 +253,19 @@ export async function POST(request: NextRequest) {
               },
               referenceType: VideoGenerationReferenceType.ASSET,
             });
-            console.log(`✓ Added character grid for ${char.name}`);
+            console.log(`${sceneTag} ✓ Added character grid for ${char.name}`);
           } catch (e) {
-            console.warn(`Failed to create grid for ${char.name}:`, e);
+            console.warn(
+              `${sceneTag} Failed to create grid for ${char.name}:`,
+              e,
+            );
           }
         }
       }
 
-      console.log(`Total reference images: ${referenceImages.length}`);
+      console.log(
+        `${sceneTag} Total reference images: ${referenceImages.length}`,
+      );
 
       operation = await ai.models.generateVideos({
         model: "veo-3.1-fast-generate-001",
@@ -274,52 +281,104 @@ export async function POST(request: NextRequest) {
     }
 
     // Poll for completion - per docs, videos can take up to 6 minutes
-    console.log("Video generation started, polling for completion...");
+    console.log(
+      `${sceneTag} Video generation started, polling for completion...`,
+    );
     let pollCount = 0;
     const maxPolls = 60; // 10 minutes max (10 seconds per poll)
 
     while (!operation.done && pollCount < maxPolls) {
       pollCount++;
-      console.log(`Poll ${pollCount}/${maxPolls}...`);
+      console.log(`${sceneTag} Poll ${pollCount}/${maxPolls}...`);
       await new Promise((resolve) => setTimeout(resolve, 10000)); // Wait 10 seconds
       operation = await ai.operations.getVideosOperation({
         operation: operation,
       });
+      console.log(
+        `${sceneTag} Poll ${pollCount}/${maxPolls} returned done=${operation.done}`,
+      );
     }
 
     if (!operation.done) {
-      throw new Error("Video generation timed out");
+      throw new Error(`${sceneTag} Video generation timed out`);
+    }
+
+    // Check if the operation itself returned an error (e.g., safety block)
+    if (operation.error) {
+      console.error(
+        `${sceneTag} Vertex AI Operation Error:`,
+        JSON.stringify(operation.error, null, 2),
+      );
+      throw new Error(
+        `${sceneTag} Video generation failed: ${operation.error.message || "Unknown error"}`,
+      );
     }
 
     // Get the video file from response
+    // Vertex AI's Veo can return the video in two shapes:
+    //   - video.uri:        a downloadable URL (Google AI / API-key mode)
+    //   - video.videoBytes: base64-encoded MP4 inline (Vertex AI mode)
+    // Treat done=true with neither field as a hard failure (safety block,
+    // quota, etc.), so we don't silently skip the upload step.
     const generatedVideo = operation.response?.generatedVideos?.[0];
-    if (!generatedVideo?.video) {
-      throw new Error("No video generated");
+    const videoFile = generatedVideo?.video;
+    if (!videoFile || (!videoFile.uri && !videoFile.videoBytes)) {
+      console.error(
+        `${sceneTag} Operation done but no usable video. Full response:`,
+        JSON.stringify(operation, null, 2),
+      );
+      throw new Error(
+        `${sceneTag} No video generated (operation completed without uri or videoBytes). Check server logs for full response.`,
+      );
     }
 
-    console.log("Video generation complete!");
-
-    // Get the video file object
-    const videoFile = generatedVideo.video;
+    console.log(
+      `${sceneTag} Video generation complete after ${pollCount} poll(s).`,
+    );
 
     // Download the video to a temp file, then upload to UploadThing for persistent storage
     let videoUrl: string;
+    const tempDir = os.tmpdir();
+    const tempFilePath = path.join(
+      tempDir,
+      `scene-${sceneIndex + 1}-${Date.now()}.mp4`,
+    );
 
     try {
-      // Create temp file path
-      const tempDir = os.tmpdir();
-      const tempFilePath = path.join(
-        tempDir,
-        `scene-${sceneIndex + 1}-${Date.now()}.mp4`,
+      // Vertex AI returns videoBytes (base64) inline; the public Gemini API
+      // returns a downloadable uri. Handle both.
+      let buffer: Buffer;
+      if (videoFile.videoBytes) {
+        console.log(
+          `${sceneTag} Decoding base64 videoBytes from Vertex response...`,
+        );
+        buffer = Buffer.from(videoFile.videoBytes, "base64");
+      } else if (videoFile.uri) {
+        console.log(`${sceneTag} Downloading video from Vertex URI...`);
+        const downloadResponse = await fetch(videoFile.uri);
+        if (!downloadResponse.ok) {
+          throw new Error(
+            `Failed to download video from URI: ${downloadResponse.status} ${downloadResponse.statusText}`,
+          );
+        }
+        buffer = Buffer.from(await downloadResponse.arrayBuffer());
+      } else {
+        throw new Error("Video object has neither videoBytes nor uri.");
+      }
+
+      // Sanity check: a real Veo MP4 will be much larger than this. If we got
+      // back something tiny, decoding probably failed or the response was
+      // empty, and we should fail loudly instead of uploading garbage.
+      if (buffer.byteLength < 1024) {
+        throw new Error(
+          `Decoded video is suspiciously small (${buffer.byteLength} bytes). Likely not a valid MP4.`,
+        );
+      }
+
+      fs.writeFileSync(tempFilePath, buffer);
+      console.log(
+        `${sceneTag} Video written to ${tempFilePath} (${buffer.byteLength} bytes)`,
       );
-
-      // Download video using the SDK
-      await ai.files.download({
-        file: videoFile,
-        downloadPath: tempFilePath,
-      });
-
-      console.log(`Video downloaded to ${tempFilePath}`);
 
       // Read the file and upload to UploadThing
       const videoBuffer = fs.readFileSync(tempFilePath);
@@ -333,24 +392,27 @@ export async function POST(request: NextRequest) {
       if (uploadResponse[0]?.data?.ufsUrl || uploadResponse[0]?.data?.url) {
         videoUrl =
           uploadResponse[0].data.ufsUrl || uploadResponse[0].data.url || "";
-        console.log(`Video uploaded to UploadThing: ${videoUrl}`);
+        console.log(`${sceneTag} Video uploaded to UploadThing: ${videoUrl}`);
       } else {
-        throw new Error("Failed to upload video to UploadThing");
+        throw new Error(
+          `Failed to upload video to UploadThing: ${JSON.stringify(uploadResponse[0]?.error ?? uploadResponse[0])}`,
+        );
       }
-
-      // Clean up temp file
-      fs.unlinkSync(tempFilePath);
-    } catch (downloadError) {
-      console.warn(
-        "Failed to download/upload video, using temporary URI:",
-        downloadError,
-      );
-      // Fallback to the temporary URI (valid for ~2 days per docs)
-      videoUrl = videoFile.uri || "";
-      console.log(`Using temporary video URI: ${videoUrl}`);
+    } finally {
+      // Always try to clean up the temp file, even if upload failed
+      try {
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
+      } catch (cleanupError) {
+        console.warn(
+          `${sceneTag} Failed to clean up temp file:`,
+          cleanupError,
+        );
+      }
     }
 
-    console.log(`Final video URL: ${videoUrl}`);
+    console.log(`${sceneTag} Final video URL: ${videoUrl}`);
 
     return NextResponse.json({
       sceneId,
@@ -359,7 +421,7 @@ export async function POST(request: NextRequest) {
       message: `Generated video for Scene ${sceneIndex + 1}`,
     });
   } catch (error) {
-    console.error("Error generating video:", error);
+    console.error("[generate-video] Error:", error);
     return NextResponse.json(
       {
         error:
