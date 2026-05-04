@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { SummaryPanel } from "@/components/preview/summary-panel";
 import { ArtifactPanel } from "@/components/preview/artifact-panel";
-import { RotateCcw, Loader2 } from "lucide-react";
+import { RotateCcw, Loader2, Calendar } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -52,14 +53,29 @@ export default function Page() {
     <div className="flex h-screen flex-col bg-background">
       {/* Header */}
       <header className="flex h-14 items-center justify-between border-b border-border px-4">
-        <Image
-          src="/images/tataAI_logoText.png"
-          alt="TataAI"
-          width={140}
-          height={32}
-          className="h-12 w-auto"
-          priority
-        />
+        <div className="flex items-center gap-4">
+          <Image
+            src="/images/tataAI_logoText.png"
+            alt="TataAI"
+            width={140}
+            height={32}
+            className="h-12 w-auto"
+            priority
+          />
+          <div className="flex items-center gap-1 ml-4 border-l border-border pl-4">
+            <Link href="/">
+              <Button variant="ghost" size="sm">
+                Chat
+              </Button>
+            </Link>
+            <Link href="/scheduler">
+              <Button variant="ghost" size="sm" className="gap-2">
+                <Calendar className="h-4 w-4" />
+                Scheduler
+              </Button>
+            </Link>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleNewProject}>
             <RotateCcw className="mr-2 h-4 w-4" />

@@ -142,7 +142,7 @@ ${STYLE_GUIDANCE}`;
     console.log("Generating first angle (anchor)...");
 
     const firstResponse = await ai.models.generateContent({
-      model: "gemini-3-pro-image-preview",
+      model: "gemini-3.1-flash-image-preview",
       contents: [
         { role: "user", parts: [{ text: firstPrompt }, ...referenceParts] },
       ],
@@ -217,7 +217,7 @@ ${STYLE_GUIDANCE}`;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-3-pro-image-preview",
+            model: "gemini-3.1-flash-image-preview",
             contents: [
               {
                 role: "user",
