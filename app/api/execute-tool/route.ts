@@ -943,8 +943,8 @@ async function handlePreprocessScript(
 }
 
 /**
- * Generate ALL preprocessing assets (locations + attires) in parallel
- * This waits for all to complete and returns all generated images
+ * Generate ALL preprocessing assets (locations + attires) sequentially
+ * to avoid Vertex AI rate limits (429 RESOURCE_EXHAUSTED)
  */
 async function handleGeneratePreprocessingAssets(
     args: Record<string, unknown>,
@@ -982,8 +982,14 @@ async function handleGeneratePreprocessingAssets(
         `=== GENERATING PREPROCESSING ASSETS: ${pendingLocations.length} locations, ${pendingAttires.length} attires ===`
     );
 
-    // Generate all in parallel
-    const locationPromises = pendingLocations.map(async (loc) => {
+    // Generate sequentially to avoid Vertex AI 429 rate limits
+    const locationResults: Array<{
+        id: string;
+        name: string;
+        imageUrl?: string;
+        success: boolean;
+    }> = [];
+    for (const loc of pendingLocations) {
         console.log(`Generating location image for: ${loc.name} (${loc.id})`);
         try {
             const response = await fetch(
@@ -1010,29 +1016,37 @@ async function handleGeneratePreprocessingAssets(
             }
             const result = await response.json();
             console.log(`Location image generated for: ${loc.name}`);
-            return {
+            locationResults.push({
                 id: loc.id,
                 name: loc.name,
                 imageUrl: result.imageUrl,
                 success: true,
-            };
+            });
         } catch (error) {
             console.error(`Error generating location ${loc.name}:`, error);
-            return { id: loc.id, name: loc.name, success: false };
+            locationResults.push({ id: loc.id, name: loc.name, success: false });
         }
-    });
+    }
 
-    const attirePromises = pendingAttires.map(async (attire) => {
+    const attireResults: Array<{
+        id: string;
+        name: string;
+        characterName: string;
+        generatedAngles?: string[];
+        success: boolean;
+    }> = [];
+    for (const attire of pendingAttires) {
         const character = projectState.characters.find(
             (c) => c.id === attire.characterId
         );
         if (!character || character.referencePhotos.length === 0) {
-            return {
+            attireResults.push({
                 id: attire.id,
                 name: attire.name,
                 characterName: character?.name || "Unknown",
                 success: false,
-            };
+            });
+            continue;
         }
         try {
             const response = await fetch(`${baseUrl}/api/generate-angles`, {
@@ -1047,28 +1061,22 @@ async function handleGeneratePreprocessingAssets(
             });
             if (!response.ok) throw new Error("Generation failed");
             const result = await response.json();
-            return {
+            attireResults.push({
                 id: attire.id,
                 name: attire.name,
                 characterName: character.name,
                 generatedAngles: result.generatedAngles,
                 success: true,
-            };
+            });
         } catch {
-            return {
+            attireResults.push({
                 id: attire.id,
                 name: attire.name,
                 characterName: character.name,
                 success: false,
-            };
+            });
         }
-    });
-
-    // Wait for all generations
-    const [locationResults, attireResults] = await Promise.all([
-        Promise.all(locationPromises),
-        Promise.all(attirePromises),
-    ]);
+    }
 
     // Build state updates
     const stateUpdates: Array<{ type: string; payload: unknown }> = [];

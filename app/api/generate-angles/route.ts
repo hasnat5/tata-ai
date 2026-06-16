@@ -42,27 +42,15 @@ Lighting: soft, even studio lighting.
 Quality: high-quality professional photography style.
 `.trim();
 
-// ============================================
-// RETRY / CONCURRENCY UTILITIES
-// ============================================
+import {
+  describeApiError,
+  isRetriableError,
+  MAX_RETRIES,
+  BASE_DELAY_MS,
+  sleep,
+} from "@/lib/vertex-retry";
 
-const MAX_RETRIES = 4;
-const BASE_DELAY_MS = 2000;
-const CONCURRENCY = 2;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRetriableError(err: unknown): boolean {
-  const status = (err as { status?: number })?.status;
-  if (status === 429) return true;
-  if (typeof status === "number" && status >= 500 && status < 600) return true;
-  const msg = String((err as { message?: string })?.message ?? err);
-  return /RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|DEADLINE_EXCEEDED|429|5\d\d/.test(
-    msg,
-  );
-}
+const CONCURRENCY = 1;
 
 // ============================================
 // REQUEST TYPE
@@ -258,14 +246,16 @@ ${STYLE_GUIDANCE}`;
               BASE_DELAY_MS * Math.pow(2, attempt) +
               Math.floor(Math.random() * 750);
             console.warn(
-              `Retrying ${angle.id} after transient error (attempt ${
+              `Retrying ${angle.id} after transient Vertex error (attempt ${
                 attempt + 1
-              }/${MAX_RETRIES}) in ${delay}ms`,
+              }/${MAX_RETRIES}) in ${delay}ms — ${describeApiError(error)}`,
             );
             await sleep(delay);
             continue;
           }
-          console.error(`Error generating ${angle.id}:`, error);
+          console.error(
+            `Error generating ${angle.id}: ${describeApiError(error)}`,
+          );
           return null;
         }
       }

@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 import { uploadBase64Image } from "@/lib/upload";
+import { withVertexRetry } from "@/lib/vertex-retry";
 
 const ai = new GoogleGenAI({
     vertexai: true,
@@ -133,14 +134,18 @@ Style: Cinematic, high production value, suitable for video background`;
             contentParts = [{ text: generatePrompt }];
         }
 
-        const response = await ai.models.generateContent({
-            model: "gemini-3-pro-image-preview",
-            contents: [{ role: "user", parts: contentParts }],
-            config: {
-                responseModalities: ["IMAGE"],
-                imageConfig: { aspectRatio: "16:9", imageSize: "1K" },
-            },
-        });
+        const response = await withVertexRetry(
+            `location-image:${locationName}`,
+            () =>
+                ai.models.generateContent({
+                    model: "gemini-3.1-flash-image-preview",
+                    contents: [{ role: "user", parts: contentParts }],
+                    config: {
+                        responseModalities: ["IMAGE"],
+                        imageConfig: { aspectRatio: "16:9", imageSize: "1K" },
+                    },
+                }),
+        );
 
         // Extract image from response
         const parts = response.candidates?.[0]?.content?.parts || [];
